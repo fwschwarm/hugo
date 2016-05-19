@@ -21,13 +21,9 @@
 #define INPUT_GROUND    2
 
 
-ISR(TIMER0_OVF_vect)
-{
-	if (INPUT_PORT &= 1<<INPUT_GROUND) {
-//		OCR1A = 2200;
-//		OCR1B = 2200;
-	}
-}
+//ISR(TIMER0_OVF_vect)
+//{
+//}
  
 int init(void)
 {
@@ -55,8 +51,8 @@ int init(void)
 
 	sei();
 
-//	OCR1A = 1100;
-//	OCR1B = 1100;
+	OCR1A = -1;
+	OCR1B = -1;
  
 }
  
@@ -65,11 +61,18 @@ int main( void )
 	init();
 
 	while(1){
-		ADCSRA |= (1<<ADSC);
-
-		while (ADCSRA & (1<<ADSC));
-
+//		ADCSRA |= (1<<ADSC);
+//		while (ADCSRA & (1<<ADSC));
 //		g_speed = ADCW;
+
+		if (INPUT_PIN &= 1<<INPUT_GROUND) {
+			OCR1A = -1;
+			OCR1B = -1;
+		} else {
+			OCR1A = 900;
+	//		OCR1B = 10;
+		}
+
 	}
 }
 
