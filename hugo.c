@@ -2,18 +2,18 @@
 //!
 //! Using Atmega8 microcontroller
 
+#define F_CPU           1000000
+
 #include <stdint.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
- 
-#define F_CPU           3686400		// Taktfrequenz
 
 #define SERVO_DDR       DDRB
 #define SERVO_PORT      PORTB
 #define SERVO_PIN       PINB
 #define SERVO_LEFT      1
-#define SERVO_RIGHT     2
+#define SERVO_RIGHT     0
  
 #define INPUT_DDR       DDRC
 #define INPUT_PORT      PORTC
@@ -24,6 +24,28 @@
 //ISR(TIMER0_OVF_vect)
 //{
 //}
+
+//! Move from -90 to 90 degree
+//! Offset goes from -1 to 1.0
+void move(int id, double offset)
+{
+	switch (id) {
+	case SERVO_LEFT:
+		if (offset == 0.0) {
+			OCR1A = -1;
+		} else {
+			OCR1A = ICR1 * (1.5 + 0.5 * offset) / 20;
+		}
+		break;
+	case SERVO_RIGHT:
+		if (offset == 0.0) {
+			OCR1B = -1;
+		} else {
+			OCR1B = ICR1 * (1.5 - 0.5 * offset) / 20;
+		}
+		break;
+	}
+}
  
 int init(void)
 {
@@ -37,7 +59,7 @@ int init(void)
 	SERVO_PORT = 0x00;
 	SERVO_DDR = 0xFF;                     
 
-	ICR1 = 20000;
+	ICR1 = 19999;
 	TCCR1A  = (1<<COM1A1)|(1<<COM1B1)|(1<<WGM11);
 	TCCR1B =  (1<<WGM13)|(1<<WGM12)|(1<<CS10);
 
@@ -51,13 +73,14 @@ int init(void)
 
 	sei();
 
-	OCR1A = -1;
-	OCR1B = -1;
- 
+	move(SERVO_LEFT, 0.0);
+	move(SERVO_RIGHT, 0.0);
 }
- 
+
 int main( void )
 {
+	int i;
+
 	init();
 
 	while(1){
@@ -66,11 +89,11 @@ int main( void )
 //		g_speed = ADCW;
 
 		if (INPUT_PIN &= 1<<INPUT_GROUND) {
-			OCR1A = -1;
-			OCR1B = -1;
+			move(SERVO_LEFT, 0.0);
+			move(SERVO_RIGHT, 0.0);
 		} else {
-			OCR1A = 900;
-	//		OCR1B = 10;
+			move(SERVO_LEFT, -0.1);
+			move(SERVO_RIGHT, -0.1);
 		}
 
 	}
