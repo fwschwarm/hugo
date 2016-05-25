@@ -9,6 +9,14 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+#define SPEED_SLOW	0.1
+#define SPEED_FAST	0.9
+
+#define SPEED_BASE	0.15
+
+#define MODE_MOTH	0
+#define MODE_BUG	1
+
 #define SERVO_DDR       DDRB
 #define SERVO_PORT      PORTB
 #define SERVO_PIN       PINB
@@ -21,6 +29,8 @@
 #define SENSOR_LEFT	1
 #define SENSOR_RIGHT	0
 #define SENSOR_GROUND	2
+
+int g_mode = MODE_MOTH;
 
 //ISR(TIMER0_OVF_vect)
 //{
@@ -55,14 +65,14 @@ void move(int id, double offset)
 //		if (offset == 0.0) {
 //			OCR1A = -1;
 //		} else {
-			OCR1A = ICR1 * (1.5 + 0.5 * offset) / 20;
+			OCR1A = ICR1 * (1.5 - 0.5 * offset) / 20;
 //		}
 		break;
 	case SERVO_RIGHT:
 //		if (offset == 0.0) {
 //			OCR1B = -1;
 //		} else {
-			OCR1B = ICR1 * (1.5 - 0.5 * offset) / 20;
+			OCR1B = ICR1 * (1.5 + 0.5 * offset) / 20;
 //		}
 		break;
 	}
@@ -105,38 +115,62 @@ int init(void)
 	move(SERVO_RIGHT, 0.0);
 }
 
-int main( void )
+int work(void)
+{
+	uint16_t photo_left, photo_right, photo_ave;
+	uint32_t photo_tot;
+	double speed_left, speed_right;
+	double speed_mode;
+
+	//! Measure brightness
+	photo_left = measure(SENSOR_LEFT);
+	photo_right = measure(SENSOR_RIGHT);
+
+	photo_ave = 0.5 * photo_left + 0.5 * photo_right;
+	photo_tot = photo_left + photo_right;
+
+	switch (g_mode) {
+
+	case MODE_MOTH:
+		speed_mode = -1.0;
+		break;
+
+	case MODE_BUG:
+		speed_mode = 1.0;
+		break;
+	}
+
+	//! Base speed
+	speed_left = SPEED_BASE;
+	speed_right = SPEED_BASE;
+
+	//! Correct direction
+	speed_left += speed_mode * ((double)photo_left - (double)photo_ave) / (double)photo_ave;
+	speed_right += speed_mode * ((double)photo_right - (double)photo_ave) / (double)photo_ave;
+
+	move(SERVO_LEFT, speed_left);
+	move(SERVO_RIGHT, speed_right);
+}
+
+int sleep(void)
+{
+	move(SERVO_LEFT, 0.0);
+	move(SERVO_RIGHT, 0.0);
+
+	_delay_ms(10);
+}
+
+int main(void)
 {
 	int i;
 
 	init();
 
 	while(1){
-//		ADCSRA |= (1<<ADSC);
-//		while (ADCSRA & (1<<ADSC));
-//		g_speed = ADCW;
-
-		if (SENSOR_PIN &= 1<<SENSOR_GROUND) {
-
-			if (measure(SENSOR_LEFT) > 512)
-				move(SERVO_LEFT, 0.1);
-			else
-				move(SERVO_LEFT, 0.0);
-
-
-			if (measure(SENSOR_RIGHT) > 512)
-				move(SERVO_RIGHT, 0.1);
-			else
-				move(SERVO_RIGHT, 0.0);
-
-		} else {
-			if (measure(SENSOR_LEFT) < measure(SENSOR_RIGHT)) {
-				move(SERVO_LEFT, -0.1);
-			} else {
-				move(SERVO_RIGHT, -0.1);
-			}
-		}
-
+		if (SENSOR_PIN &= 1<<SENSOR_GROUND)
+			sleep();
+		else
+			work();
 	}
 }
 
