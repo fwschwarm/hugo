@@ -13,6 +13,7 @@
 #define SPEED_FAST	0.9
 
 #define SPEED_BASE	0.15
+#define SPEED_STOP	0.0
 
 #define MODE_MOTH	0
 #define MODE_BUG	1
@@ -60,21 +61,28 @@ uint16_t measure(uint8_t ch)
 
 //! Move from -90 to 90 degree
 //! Offset goes from -1 to 1.0
-void move(int id, double offset)
+void move(int id, double speed)
 {
+	static double speed_left = -10.0, speed_right = -10.0;
 	switch (id) {
 	case SERVO_LEFT:
-//		if (offset == 0.0) {
+//		if (speed == SPEED_STOP) {
 //			OCR1A = -1;
 //		} else {
-			OCR1A = ICR1 * (1.5 - 0.5 * offset) / 20;
+			if (speed != speed_left) {
+				OCR1A = ICR1 * (1.5 - 0.5 * speed) / 20;
+				speed_left = speed;
+			}
 //		}
 		break;
 	case SERVO_RIGHT:
-//		if (offset == 0.0) {
+//		if (speed == SPEED_STOP) {
 //			OCR1B = -1;
 //		} else {
-			OCR1B = ICR1 * (1.5 + 0.5 * offset) / 20;
+			if (speed != speed_right) {
+				OCR1B = ICR1 * (1.5 + 0.5 * speed) / 20;
+				speed_right = speed;
+			}
 //		}
 		break;
 	}
@@ -112,8 +120,8 @@ int init(void)
 	sei();
 
 	//! Stop motors
-	move(SERVO_LEFT, 0.0);
-	move(SERVO_RIGHT, 0.0);
+	move(SERVO_LEFT, SPEED_STOP);
+	move(SERVO_RIGHT, SPEED_STOP);
 }
 
 int crazy(void)
@@ -121,21 +129,41 @@ int crazy(void)
 	return 0;
 }
 
+int sleep(void)
+{
+	move(SERVO_LEFT, SPEED_STOP);
+	move(SERVO_RIGHT, SPEED_STOP);
+
+	_delay_ms(10);
+}
+
 int work(void)
 {
-	static uint32_t evasive_count = 0;
+	static uint32_t evasive_count = 0, ground_count = 0;
 	static int evasive = 0;
+	static int ground = 1;
 	int bump_left = 0, bump_right = 0;
 	uint16_t photo_left, photo_right, photo_ave;
 	uint32_t photo_tot;
-	double speed_left = SPEED_BASE, speed_right = SPEED_BASE;
+	double speed_left = SPEED_STOP, speed_right = SPEED_STOP;
 	double speed_factor = 1.0;
+
+	//! Check for ground contact
+	if (SENSOR_PIN &= 1<<SENSOR_GROUND) {
+		if (ground)
+			ground_count = 4E-3 * F_CPU;
+
+		ground = 0;
+	} else {
+		ground = 1;
+		ground_count = 0;
+	}
 
 	//! Check for collision
 	if (SENSOR_PIN &= 1<<SENSOR_CLEFT) {
 		bump_left = 0;
 	} else {
-		move(SERVO_LEFT, 0.0);
+		move(SERVO_LEFT, SPEED_STOP);
 		bump_left = 1;
 		evasive = 1;
 	}
@@ -143,19 +171,26 @@ int work(void)
 	if (SENSOR_PIN &= 1<<SENSOR_CRIGHT) {
 		bump_right = 0;
 	} else {
-		move(SERVO_RIGHT, 0.0);
+		move(SERVO_RIGHT, SPEED_STOP);
 		bump_right = 1;
 		evasive = 2;
 	}
 
 	if (bump_left || bump_right)
-		evasive_count = 3E-4 * F_CPU;
+		evasive_count = 2E-3 * F_CPU;
 
 	if (bump_left && bump_right)
 		evasive = 3;
 
 	//! Check for evasive maneuver
-	if (evasive_count > 0) {
+	if (ground_count > 0) {
+
+		ground_count--;
+
+		speed_left = 0.21*SPEED_FAST;
+		speed_right = 0.49*SPEED_FAST;
+
+	} else if (evasive_count > 0) {
 
 		evasive_count--;
 
@@ -175,7 +210,8 @@ int work(void)
 		default:
 			return crazy();
 		}
-	} else {
+
+	} else if (ground) {
 		//! Measure brightness
 		photo_left = measure(SENSOR_LEFT);
 		photo_right = measure(SENSOR_RIGHT);
@@ -193,22 +229,22 @@ int work(void)
 			speed_factor = 1.0;
 			break;
 		}
-	
+
+		//! Set base speed
+		speed_left = -SPEED_BASE;
+		speed_right = -SPEED_BASE;
+
 		//! Correct direction
 		speed_left += speed_factor * ((double)photo_left - (double)photo_ave) / (double)photo_ave;
 		speed_right += speed_factor * ((double)photo_right - (double)photo_ave) / (double)photo_ave;
+	} else {
+		sleep();
 	}
 
 	move(SERVO_LEFT, speed_left);
 	move(SERVO_RIGHT, speed_right);
-}
 
-int sleep(void)
-{
-	move(SERVO_LEFT, 0.0);
-	move(SERVO_RIGHT, 0.0);
-
-	_delay_ms(10);
+	return 0;
 }
 
 int main(void)
@@ -217,11 +253,8 @@ int main(void)
 
 	init();
 
-	while(1){
-		if (SENSOR_PIN &= 1<<SENSOR_GROUND)
-			sleep();
-		else
-			work();
-	}
+	while(1)
+//		sleep();
+		work();
 }
 
