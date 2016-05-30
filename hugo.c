@@ -9,8 +9,8 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-#define GROUND_COUNT	4E-3 * F_CPU ///< Number of work function loops before giving up if ground contact is lost
-#define EVASIVE_COUNT	2E-3 * F_CPU ///< Number of work function loops for evasive manouvers
+#define GROUND_COUNT	1.5E-3 * F_CPU ///< Number of work function loops before giving up if ground contact is lost
+#define EVASIVE_COUNT	1.5E-3 * F_CPU ///< Number of work function loops for evasive manouvers
 
 #define SPEED_STOP	0.0	///< Stop motor
 #define SPEED_SLOW	0.1	///< Slow speed
@@ -25,8 +25,10 @@
 #define SERVO_PIN       PINB	///< Servo pin
 #define SERVO_LEFT      1	///< PWM pin left
 #define SERVO_RIGHT     0	///< PWM pin right
-#define SERVO_LEFT_OFFSET   0.053	///< Speed offset left (0.023 -- 0.083 -> 0.053)
-#define SERVO_RIGHT_OFFSET -0.191	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
+//#define SERVO_LEFT_OFFSET   0.053	///< Speed offset left (0.023 -- 0.083 -> 0.053)
+//#define SERVO_RIGHT_OFFSET -0.191	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
+#define SERVO_LEFT_OFFSET   0.095	///< Speed offset left (0.023 -- 0.083 -> 0.053)
+#define SERVO_RIGHT_OFFSET -0.21	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
 #define SERVO_LEFT_FACTOR   0.76	///< Speed calibration left ()
 #define SERVO_RIGHT_FACTOR  0.76	///< Speed calibration right (0.52,)
 
@@ -49,17 +51,19 @@ int g_mode = MODE_MOTH;		///< Default mode
 //! Turn on LED
 void led_on()
 {
-	LED_PORT &= (1<<LED_FRONT);
-
-	return;
+	LED_PORT &= 1 << LED_FRONT;
 }
 
 //! Turn off LED
 void led_off()
 {
-	LED_PORT |= ~(1<<LED_FRONT);
+	LED_PORT |= ~(1 << LED_FRONT);
+}
 
-	return;
+//! Turn off LED
+void led_toggle()
+{
+	LED_PORT ^= 1 << LED_FRONT;
 }
 
 //! Read value from ADC
@@ -142,6 +146,9 @@ int init(void)
 	//! Enable interupts
 	sei();
 
+	//! Turn off LED
+	led_off();
+
 	//! Stop motors
 	move(SERVO_LEFT, SPEED_STOP);
 	move(SERVO_RIGHT, SPEED_STOP);
@@ -165,9 +172,8 @@ int sleep(void)
 //! Main work function
 int work(void)
 {
-	static uint32_t evasive_count = 0, ground_count = 0;
-	static int evasive = 0;
-	static int ground = 1;
+	static uint32_t evasive_count = 0, ground_count = 0, lost_count = 0;
+	static int evasive = 0, ground = 1, lost = 0;
 	int bump_left = 0, bump_right = 0;
 	uint16_t photo_left, photo_right, photo_ave;
 	uint32_t photo_tot;
@@ -176,15 +182,36 @@ int work(void)
 
 	//! Check for ground contact
 	if (SENSOR_PIN &= 1<<SENSOR_GROUND) {
-		led_off();
-		if (ground)
-			ground_count = GROUND_COUNT;
+
+		if (ground) {
+			//! Lost ground contact
+			lost_count = 30;
+			lost = 1;
+		}
 
 		ground = 0;
+
+		if (lost_count > 0) {
+			lost_count--;
+		} else if (lost) {
+			evasive = 3;
+			evasive_count = GROUND_COUNT;
+			lost = 0;
+		}
+//			lost_count--;
+//			evasive = 0;
+//			ground = 0;
+//		} else {
+//			evasive = 3;
+//			evasive_count = GROUND_COUNT;
+//			ground = 0; 
+//			led_off();
+//		}
+
 	} else {
-		led_on();
 		ground = 1;
-		ground_count = 0;
+
+		led_on();
 	}
 
 	//! Check for collision
@@ -195,7 +222,7 @@ int work(void)
 		bump_left = 1;
 		evasive = 1;
 	}
-
+	
 	if (SENSOR_PIN &= 1<<SENSOR_CRIGHT) {
 		bump_right = 0;
 	} else {
@@ -203,22 +230,15 @@ int work(void)
 		bump_right = 1;
 		evasive = 2;
 	}
-
+	
 	if (bump_left || bump_right)
 		evasive_count = EVASIVE_COUNT;
-
+	
 	if (bump_left && bump_right)
 		evasive = 3;
 
 	//! Check for evasive maneuver
-	if (ground_count > 0) {
-
-		ground_count--;
-
-		speed_left = 0.21*SPEED_FAST;
-		speed_right = 0.49*SPEED_FAST;
-
-	} else if (evasive_count > 0) {
+	if (evasive_count > 0) {
 
 		evasive_count--;
 
@@ -232,8 +252,8 @@ int work(void)
 			speed_right = SPEED_SLOW;
 			break;
 		case 3:
-			speed_left = 1.01*SPEED_FAST;
-			speed_right = 0.09*SPEED_FAST;
+			speed_left = 1.01 * SPEED_FAST;
+			speed_right = 0.09 * SPEED_FAST;
 			break;
 		default:
 			return crazy();
@@ -250,11 +270,11 @@ int work(void)
 		switch (g_mode) {
 	
 		case MODE_MOTH:
-			speed_factor = -1.0;
+			speed_factor = 1.0;
 			break;
 	
 		case MODE_BUG:
-			speed_factor = 1.0;
+			speed_factor = -1.0;
 			break;
 		}
 
@@ -282,7 +302,7 @@ int main(void)
 	init();
 
 	while(1)
-//		sleep();
 		work();
+//		sleep();
 }
 
