@@ -2,42 +2,65 @@
 //!
 //! Using Atmega8 microcontroller
 
-#define F_CPU           1000000
+#define F_CPU           1000000	///< CPU frequency
 
 #include <stdint.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-#define SPEED_SLOW	0.1
-#define SPEED_FAST	0.9
+#define GROUND_COUNT	4E-3 * F_CPU ///< Number of work function loops before giving up if ground contact is lost
+#define EVASIVE_COUNT	2E-3 * F_CPU ///< Number of work function loops for evasive manouvers
 
-#define SPEED_BASE	0.15
-#define SPEED_STOP	0.0
+#define SPEED_STOP	0.0	///< Stop motor
+#define SPEED_SLOW	0.1	///< Slow speed
+#define SPEED_BASE	0.15	///< Normal speed
+#define SPEED_FAST	0.9	///< Fast speed
 
-#define MODE_MOTH	0
-#define MODE_BUG	1
+#define MODE_MOTH	0	///< Search for light places
+#define MODE_BUG	1	///< Search for dark places
 
-#define SERVO_DDR       DDRB
-#define SERVO_PORT      PORTB
-#define SERVO_PIN       PINB
-#define SERVO_LEFT      1
-#define SERVO_RIGHT     0
+#define SERVO_DDR       DDRB	///< Data direction of servo ports
+#define SERVO_PORT      PORTB	///< Servo port
+#define SERVO_PIN       PINB	///< Servo pin
+#define SERVO_LEFT      1	///< PWM pin left
+#define SERVO_RIGHT     0	///< PWM pin right
+#define SERVO_LEFT_OFFSET   0.053	///< Speed offset left (0.023 -- 0.083 -> 0.053)
+#define SERVO_RIGHT_OFFSET -0.191	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
+#define SERVO_LEFT_FACTOR   0.76	///< Speed calibration left ()
+#define SERVO_RIGHT_FACTOR  0.76	///< Speed calibration right (0.52,)
+
+#define LED_DDR		SERVO_DDR	///< LED port is same as servo port
+#define LED_PORT	SERVO_PORT	///< LED port is same as servo port
+#define LED_PIN		SERVO_PIN	///< LED port is same as servo port
+#define LED_FRONT	4	///< Front LED
  
-#define SENSOR_DDR	DDRC
-#define SENSOR_PORT	PORTC
-#define SENSOR_PIN	PINC
-#define SENSOR_LEFT	1
-#define SENSOR_RIGHT	0
-#define SENSOR_GROUND	2
-#define SENSOR_CRIGHT	4
-#define SENSOR_CLEFT	5
+#define SENSOR_DDR	DDRC	///< Data direction of servo ports
+#define SENSOR_PORT	PORTC	///< Servo port
+#define SENSOR_PIN	PINC	///< Servo pin
+#define SENSOR_LEFT	1	///< Left photo resistor pin
+#define SENSOR_RIGHT	0	///< Right photo resistor pin
+#define SENSOR_GROUND	2	///< Ground switch pin (active low)
+#define SENSOR_CRIGHT	4	///< Left collison switch pin (active low)
+#define SENSOR_CLEFT	5	///< Right collison switch pin (active low)
 
-int g_mode = MODE_MOTH;
+int g_mode = MODE_MOTH;		///< Default mode
 
-//ISR(TIMER0_OVF_vect)
-//{
-//}
+//! Turn on LED
+void led_on()
+{
+	LED_PORT &= (1<<LED_FRONT);
+
+	return;
+}
+
+//! Turn off LED
+void led_off()
+{
+	LED_PORT |= ~(1<<LED_FRONT);
+
+	return;
+}
 
 //! Read value from ADC
 uint16_t measure(uint8_t ch)
@@ -59,8 +82,10 @@ uint16_t measure(uint8_t ch)
 	return(ADC);
 }
 
-//! Move from -90 to 90 degree
-//! Offset goes from -1 to 1.0
+//! Set motor speed
+//!
+//! @param id    Motor [SERVO_LEFT|SERVO_RIGHT]
+//! @param speed Speed [-1.0:1.0]
 void move(int id, double speed)
 {
 	static double speed_left = -10.0, speed_right = -10.0;
@@ -70,7 +95,7 @@ void move(int id, double speed)
 //			OCR1A = -1;
 //		} else {
 			if (speed != speed_left) {
-				OCR1A = ICR1 * (1.5 - 0.5 * speed) / 20;
+				OCR1A = ICR1 * (1.5 - 0.5 * (SERVO_LEFT_FACTOR * speed - SERVO_LEFT_OFFSET)) / 20.0;
 				speed_left = speed;
 			}
 //		}
@@ -80,7 +105,7 @@ void move(int id, double speed)
 //			OCR1B = -1;
 //		} else {
 			if (speed != speed_right) {
-				OCR1B = ICR1 * (1.5 + 0.5 * speed) / 20;
+				OCR1B = ICR1 * (1.5 + 0.5 * (SERVO_RIGHT_FACTOR * speed - SERVO_RIGHT_OFFSET)) / 20.0;
 				speed_right = speed;
 			}
 //		}
@@ -88,10 +113,12 @@ void move(int id, double speed)
 	}
 }
  
+//! Initialize registers
 int init(void)
 {
 	int i;
 
+	//! Motor PWM ports
 	SERVO_PORT = 0x00;
 	SERVO_DDR = 0xFF;                     
 
@@ -108,13 +135,9 @@ int init(void)
 	//! Enable the ADC
 	ADCSRA = (1<<ADEN) | (1<<ADPS2) | (1<<ADPS0);
 	ADMUX = (1<<REFS0);
-//ADMUX=(1<<REFS0);                         // For Aref=AVcc;
-//ADCSRA=(1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0); //Rrescalar div factor =128
 
 	//! Activate the 8-bit timer
-	TCCR0 = (1<<CS02)|(1<<CS00);         // divide by 1024
-//	TCNT0 = (uint8_t)(int16_t)-(F_CPU / 1024 * 10e-3 + 0.5);  // preload for 10ms
-//	TIMSK |= 1<<TOIE0;                   // enable timer interrupt
+	TCCR0 = (1<<CS02)|(1<<CS00);         ///< divide by 1024
 
 	//! Enable interupts
 	sei();
@@ -124,11 +147,13 @@ int init(void)
 	move(SERVO_RIGHT, SPEED_STOP);
 }
 
+//! Undefined behaviour
 int crazy(void)
 {
 	return 0;
 }
 
+//! Stop motors and sleep for a moment
 int sleep(void)
 {
 	move(SERVO_LEFT, SPEED_STOP);
@@ -137,6 +162,7 @@ int sleep(void)
 	_delay_ms(10);
 }
 
+//! Main work function
 int work(void)
 {
 	static uint32_t evasive_count = 0, ground_count = 0;
@@ -150,11 +176,13 @@ int work(void)
 
 	//! Check for ground contact
 	if (SENSOR_PIN &= 1<<SENSOR_GROUND) {
+		led_off();
 		if (ground)
-			ground_count = 4E-3 * F_CPU;
+			ground_count = GROUND_COUNT;
 
 		ground = 0;
 	} else {
+		led_on();
 		ground = 1;
 		ground_count = 0;
 	}
@@ -177,7 +205,7 @@ int work(void)
 	}
 
 	if (bump_left || bump_right)
-		evasive_count = 2E-3 * F_CPU;
+		evasive_count = EVASIVE_COUNT;
 
 	if (bump_left && bump_right)
 		evasive = 3;
