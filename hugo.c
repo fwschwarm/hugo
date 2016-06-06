@@ -25,12 +25,12 @@
 #define SERVO_PIN       PINB	///< Servo pin
 #define SERVO_LEFT      1	///< PWM pin left
 #define SERVO_RIGHT     0	///< PWM pin right
-//#define SERVO_LEFT_OFFSET   0.053	///< Speed offset left (0.023 -- 0.083 -> 0.053)
-//#define SERVO_RIGHT_OFFSET -0.191	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
-#define SERVO_LEFT_OFFSET   0.095	///< Speed offset left (0.023 -- 0.083 -> 0.053)
-#define SERVO_RIGHT_OFFSET -0.21	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
-#define SERVO_LEFT_FACTOR   0.76	///< Speed calibration left ()
-#define SERVO_RIGHT_FACTOR  0.76	///< Speed calibration right (0.52,)
+#define SERVO_LEFT_OFFSET   0.053	///< Speed offset left (0.023 -- 0.083 -> 0.053)
+#define SERVO_RIGHT_OFFSET -0.181	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
+//#define SERVO_LEFT_OFFSET   0.095	///< Speed offset left (0.023 -- 0.083 -> 0.053)
+//#define SERVO_RIGHT_OFFSET -0.21	///< Speed offset right (-0.222 -- -0.16 -> -0.191)
+#define SERVO_LEFT_FACTOR   1.0		///< Speed calibration left
+#define SERVO_RIGHT_FACTOR  1.1		///< Speed calibration right
 
 #define LED_DDR		SERVO_DDR	///< LED port is same as servo port
 #define LED_PORT	SERVO_PORT	///< LED port is same as servo port
@@ -99,7 +99,7 @@ void move(int id, double speed)
 //			OCR1A = -1;
 //		} else {
 			if (speed != speed_left) {
-				OCR1A = ICR1 * (1.5 - 0.5 * (SERVO_LEFT_FACTOR * speed - SERVO_LEFT_OFFSET)) / 20.0;
+				OCR1A = ICR1 * (1.5 - 0.5 * SERVO_LEFT_FACTOR * (speed - SERVO_LEFT_OFFSET)) / 20.0;
 				speed_left = speed;
 			}
 //		}
@@ -109,7 +109,7 @@ void move(int id, double speed)
 //			OCR1B = -1;
 //		} else {
 			if (speed != speed_right) {
-				OCR1B = ICR1 * (1.5 + 0.5 * (SERVO_RIGHT_FACTOR * speed - SERVO_RIGHT_OFFSET)) / 20.0;
+				OCR1B = ICR1 * (1.5 + 0.5 * SERVO_RIGHT_FACTOR * (SERVO_RIGHT_FACTOR * speed - SERVO_RIGHT_OFFSET)) / 20.0;
 				speed_right = speed;
 			}
 //		}
@@ -252,8 +252,8 @@ int work(void)
 			speed_right = SPEED_SLOW;
 			break;
 		case 3:
-			speed_left = 1.01 * SPEED_FAST;
-			speed_right = 0.09 * SPEED_FAST;
+			speed_left = SPEED_FAST;
+			speed_right = SPEED_FAST;
 			break;
 		default:
 			return crazy();
@@ -270,11 +270,11 @@ int work(void)
 		switch (g_mode) {
 	
 		case MODE_MOTH:
-			speed_factor = 1.0;
+			speed_factor = 2.0*SPEED_FAST;
 			break;
 	
 		case MODE_BUG:
-			speed_factor = -1.0;
+			speed_factor = -2.2*SPEED_FAST;
 			break;
 		}
 
@@ -283,8 +283,8 @@ int work(void)
 		speed_right = -SPEED_BASE;
 
 		//! Correct direction
-		speed_left += speed_factor * ((double)photo_left - (double)photo_ave) / (double)photo_ave;
-		speed_right += speed_factor * ((double)photo_right - (double)photo_ave) / (double)photo_ave;
+		speed_left += speed_factor * ((double)photo_left - (double)photo_ave) / ((double)photo_ave);
+		speed_right += speed_factor * ((double)photo_right - (double)photo_ave) / ((double)photo_ave);
 	} else {
 		sleep();
 	}
